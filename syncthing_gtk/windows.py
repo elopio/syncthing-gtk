@@ -11,6 +11,7 @@ from syncthing_gtk.tools import IS_WINDOWS, get_config_dir
 from gi.repository import Gio, GLib, GObject, Gtk, Gdk
 import os, sys, logging, codecs, msvcrt, win32pipe, win32api, _winreg
 import win32process
+from win32com.shell import shell, shellcon
 log = logging.getLogger("windows.py")
 
 SM_SHUTTINGDOWN = 0x2000
@@ -32,15 +33,18 @@ def fix_localized_system_error_messages():
 	
 	codecs.register_error("strict", handle_error)
 
-def dont_use_localization_in_gtk():
+def enable_localization():
 	"""
-	Set's LANGUAGE environment variable to en_US, preventing
-	use of localized labels on GTK stock menus and widgets.
-	
-	This will prevent interface from being 'half-translated' until
-	real translation support is done.
+	Updates environment variables with windows locale.
 	"""
-	os.environ['LANGUAGE'] = 'en_US'
+	loc = "en"
+	domain = "syncthing-gtk"
+	try:
+		import locale
+		loc = locale.getdefaultlocale()[0]
+	except Exception, e:
+		pass
+	os.environ['LANGUAGE'] = loc
 
 def is_shutting_down():
 	""" Returns True if Windows initiated shutdown process """
@@ -84,6 +88,9 @@ def override_menu_borders():
 		style_provider,     
 		Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
 	)
+
+def get_unicode_home():
+	return shell.SHGetFolderPath(0, shellcon.CSIDL_LOCAL_APPDATA, None, 0)
 
 class WinPopenReader:
 	"""

@@ -10,13 +10,13 @@ from gi.repository import GLib
 from base64 import b32decode
 from datetime import datetime, tzinfo, timedelta
 from subprocess import Popen
-import re, os, sys, platform, logging, __main__
-_ = lambda (a) : a
+import re, os, sys, platform, logging, gettext, __main__
 log = logging.getLogger("tools.py")
 
 IS_WINDOWS	= sys.platform in ('win32', 'win64')
 IS_XP = IS_WINDOWS and platform.release() in ("XP", "2000", "2003")
 IS_GNOME, IS_UNITY, IS_KDE, IS_CINNAMON, IS_I3 = [False] * 5
+
 if "XDG_CURRENT_DESKTOP" in os.environ:
 	IS_GNOME = (os.environ["XDG_CURRENT_DESKTOP"] == "GNOME")
 	IS_UNITY = (os.environ["XDG_CURRENT_DESKTOP"] == "Unity")
@@ -31,6 +31,7 @@ if "DESKTOP_SESSION" in os.environ:
 LUHN_ALPHABET			= "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" # Characters valid in device id
 VERSION_NUMBER			= re.compile(r"^v?([0-9\.]*).*")
 LOG_FORMAT				= "%(levelname)s %(name)-13s %(message)s"
+GETTEXT_DOMAIN			= "syncthing-gtk" # used by "_" function
 DESKTOP_FILE = """[Desktop Entry]
 Name=%s
 Exec=%s
@@ -44,6 +45,9 @@ Type=Application
 if IS_WINDOWS:
 	# On Windows, WMI and pywin32 libraries are reqired
 	import wmi, _winreg
+
+""" Localization lambda """
+_ = lambda (a) : gettext.gettext(a).decode("utf-8")
 
 def luhn_b32generate(s):
 	"""
@@ -224,6 +228,14 @@ def init_logging():
 		old_log(self, level, msg, args, exc_info, extra)
 	logging.Logger._log = _log
 
+def init_locale(localedir=None):
+	"""
+	Initializes gettext-related stuff
+	"""
+	gettext.bindtextdomain(GETTEXT_DOMAIN, localedir)
+	gettext.bind_textdomain_codeset(GETTEXT_DOMAIN, "utf-8")
+	gettext.textdomain(GETTEXT_DOMAIN)
+
 def set_logging_level(verbose, debug):
 	""" Sets logging level """
 	logger = logging.getLogger()
@@ -312,6 +324,12 @@ def get_config_dir():
 	Returns ~/.config, %APPDATA% or whatever has user set as
 	configuration directory.
 	"""
+	if IS_WINDOWS:
+		try:
+			import windows
+			return windows.get_unicode_home()
+		except Exception:
+			pass
 	confdir = GLib.get_user_config_dir()
 	if confdir is None or IS_XP:
 		if IS_WINDOWS:

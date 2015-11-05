@@ -9,9 +9,9 @@ from __future__ import unicode_literals
 from gi.repository import Gtk, Gio, Gdk
 from syncthing_gtk import *
 from syncthing_gtk.tools import *
+from syncthing_gtk.tools import _ # gettext function
 from datetime import datetime
 import os, webbrowser, sys, logging, shutil, re
-_ = lambda (a) : a
 log = logging.getLogger("App")
 
 # Internal version used by updater (if enabled)
@@ -37,6 +37,7 @@ SI_FRAMES				= 12 # Number of animation frames for status icon
 RESPONSE_RESTART		= 256
 RESPONSE_FIX_FOLDER_ID	= 257
 RESPONSE_FIX_NEW_DEVICE	= 258
+RESPONSE_FIX_IGNORE		= 259
 RESPONSE_QUIT			= 260
 RESPONSE_START_DAEMON	= 271
 RESPONSE_SLAIN_DAEMON	= 272
@@ -294,7 +295,7 @@ class App(Gtk.Application, TimerManager):
 					self["edit-menu-icon"].set_from_icon_name("emblem-system-symbolic", self["edit-menu-icon"].get_icon_name()[1])
 		
 		# Set window title in way that even Gnome can understand
-		self["window"].set_title(_("Syncthing GTK"))
+		self["window"].set_title(_("Syncthing-GTK"))
 		self["window"].set_wmclass("Syncthing GTK", "Syncthing GTK")
 		self.add_window(self["window"])
 	
@@ -650,13 +651,13 @@ class App(Gtk.Application, TimerManager):
 			self.config["last_updatecheck"] = LONG_AGO
 			self.restart_after_update = True
 			self.close_connect_dialog()
-			self.display_connect_dialog(_("Your syncthing daemon is too old.\nAttempting to download recent, please wait..."))
+			self.display_connect_dialog(_("Your syncthing daemon is too old.") + "\n" + _("Attempting to download recent, please wait..."))
 			self.set_status(False)
 			self.check_for_upgrade()
 		else:
 			# All other errors are fatal for now. Error dialog is displayed and program exits.
 			if reason == Daemon.NOT_AUTHORIZED:
-				message = _("Cannot authorize with daemon failed. Please, use WebUI to generate API key or disable password authentication.")
+				message = _("Cannot authorize with daemon. Please, use WebUI to generate API key or disable password authentication.")
 			elif reason == Daemon.OLD_VERSION:
 				message = _("Your syncthing daemon is too old.\nPlease, upgrade syncthing package at least to version %s and try again.") % (self.daemon.get_min_version(),)
 			elif reason == Daemon.TLS_UNSUPPORTED:
@@ -770,7 +771,10 @@ class App(Gtk.Application, TimerManager):
 		if nid in self.devices:
 			device = self.devices[nid].get_title()
 			can_fix = True
-		markup = _('<b>%s</b> wants to share folder "<b>%s</b>". Add new folder?') % (device, rid)
+		markup = _('%(device)s wants to share folder "%(folder)s". Add new folder?') % {
+			'device' : "<b>%s</b>" % device,
+			'folder' : "<b>%s</b>" % rid
+			}
 		r = RIBar("", Gtk.MessageType.WARNING,)
 		r.get_label().set_markup(markup)
 		if can_fix:
@@ -789,10 +793,14 @@ class App(Gtk.Application, TimerManager):
 			# Store as error message and don't display twice
 			return
 		self.error_messages.add((nid, address))
-		markup = _('Device "<b>%s</b>" at IP "<b>%s</b>" wants to connect. Add new device?') % (nid, address)
+		markup = _('Device "<b>%(device)s</b>" at IP "<b>%(ip)s</b>" wants to connect. Add new device?') % {
+			'device' : "<b>%s</b>" % nid,
+			'ip' : "<b>%s</b>" % address
+			}
 		r = RIBar("", Gtk.MessageType.WARNING,)
 		r.get_label().set_markup(markup)
 		r.add_button(RIBar.build_button(_("_Add")), RESPONSE_FIX_NEW_DEVICE)
+		r.add_button(RIBar.build_button(_("_Ignore")), RESPONSE_FIX_IGNORE)
 		self.show_error_box(r, {"nid" : nid, "address" : address} )
 	
 	def cb_syncthing_my_id_changed(self, daemon, device_id):
@@ -842,10 +850,10 @@ class App(Gtk.Application, TimerManager):
 			elif len(announce) == 1:
 				device["announce"] = _("Online") if announce.values()[0] else _("offline")
 			else:
-				device["announce"] = _("%s/%s online") % (
-						len([ x for x in announce.values() if x ]),
-						len(announce)
-					)
+				device["announce"] = _("%(online)s/%(total)s online") % {
+						'online' : len([ x for x in announce.values() if x ]),
+						'total'  : len(announce)
+					}
 	
 	def cb_syncthing_device_added(self, daemon, nid, name, used, data):
 		self.show_device(nid, name,
@@ -931,7 +939,7 @@ class App(Gtk.Application, TimerManager):
 			r["readOnly"], r["ignorePerms"], 
 			r["rescanIntervalS"],
 			sorted(
-				[ self.devices[n["deviceID"]] for n in r["devices"] ],
+				[ self.devices[n["deviceID"]] for n in r["devices"] if n["deviceID"] in self.devices ],
 				key=lambda x : x.get_title().lower()
 				)
 			)
@@ -1290,7 +1298,7 @@ class App(Gtk.Application, TimerManager):
 		box.set_value("master",	_("Yes") if is_master else _("No"))
 		box.set_value("ignore",	_("Yes") if ignore_perms else _("No"))
 		box.set_value("rescan",	"%s s%s" % (
-			rescan_interval, " " + _("(watch)" if id in self.config["use_inotify"] else "" )))
+			rescan_interval, " " + _("(watch)") if id in self.config["use_inotify"] else "" ))
 		box.set_value("shared",	", ".join([ n.get_title() for n in shared ]))
 		box.set_value("b_master", is_master)
 		box.set_value("can_override", False)
@@ -1395,9 +1403,11 @@ class App(Gtk.Application, TimerManager):
 				GLib.timeout_add_seconds(1, self.watcher.start)
 		self.daemon.reload_config(callback)
 	
-	def change_setting_n_restart(self, setting_name, value, retry_on_error=False):
+	def change_setting_async(self, setting_name, value, retry_on_error=False, restart=True):
 		"""
-		Changes one value in daemon configuration and restarts daemon
+		Asynchronously changes one value in daemon configuration and
+		optionaly restarts daemon.
+		
 		This will:
 		 - call daemon.read_config() to read configuration from daemon
 		 - change value in recieved YAML document
@@ -1405,58 +1415,66 @@ class App(Gtk.Application, TimerManager):
 		 - call daemon.restart()
 		Everthing will be done asynchronously and will be repeated
 		until succeed, if retry_on_error is set to True.
-		Even if retry_on_error is True, error in write_config will
+		Even if retry_on_error is False, error in write_config will
 		be only logged.
 		
 		It is possible to change nested setting using '/' as separator.
 		That may cause error if parent setting node is not present and
 		this error will not cause retrying process as well.
+		
+		If value is callable, it's called instead of setting it.
+		In such case, callable is called as:
+		   value(config_node_as_dict, setting_name)
 		"""
 		# ^^ Longest comment in entire project
 		
 		# Callbacks
 		def csnr_error(e, trash, setting_name, value, retry_on_error):
 			"""
-			Error handler for change_setting_n_restart method
+			Error handler for change_setting_async method
 			"""
-			log.error("change_setting_n_restart: Failed to read configuration: %s", e)
+			log.error("change_setting_async: Failed to read configuration: %s", e)
 			if retry_on_error:
 				log.error("Retrying...")
-				change_setting_n_restart(setting_name, value, True)
+				change_setting_async(setting_name, value, retry_on_error, restart)
 			else:
 				log.error("Giving up.")
 		
 		def csnr_save_error(e, *a):
 			"""
-			Another error handler for change_setting_n_restart method.
+			Another error handler for change_setting_async method.
 			This one just reports failure.
 			"""
-			log.error("change_setting_n_restart: Failed to store configuration: %s", e)
+			log.error("change_setting_async: Failed to store configuration: %s", e)
 			log.error("Giving up.")
 		
 		def csnr_config_read(config, setting_name, value, retry_on_error):
 			"""
-			Handler for change_setting_n_restart
+			Handler for change_setting_async
 			Modifies recieved config and post it back.
 			"""
 			c, setting = config, setting_name
 			while "/" in setting:
 				key, setting = setting.split("/", 1)
 				c = c[key]
-			c[setting] = value
+			if hasattr(value, '__call__'):
+				value(c, setting)
+			else:
+				c[setting] = value
 			self.daemon.write_config(config, csnr_config_saved, csnr_save_error, setting_name, value)
 		
 		def csnr_config_saved(setting_name, value):
 			"""
-			Handler for change_setting_n_restart
+			Handler for change_setting_async
 			Reports good stuff and restarts daemon.
 			"""
 			log.verbose("Configuration value '%s' set to '%s'", setting_name, value)
-			message = "%s %s..." % (_("Syncthing is restarting."), _("Please wait"))
-			self.display_connect_dialog(message)
-			self.set_status(False)
-			self.restart()
-			GLib.idle_add(self.daemon.restart)
+			if restart:
+				message = "%s %s..." % (_("Syncthing is restarting."), _("Please wait"))
+				self.display_connect_dialog(message)
+				self.set_status(False)
+				self.restart()
+				GLib.idle_add(self.daemon.restart)
 		
 		# Call
 		self.daemon.read_config(csnr_config_read, csnr_error, setting_name, value, retry_on_error)
@@ -1600,11 +1618,11 @@ class App(Gtk.Application, TimerManager):
 	
 	def cb_menu_recvlimit(self, menuitem, speed=0):
 		if menuitem.get_active() and self.recv_limit != speed:
-			self.change_setting_n_restart("options/maxRecvKbps", speed)
+			self.change_setting_async("options/maxRecvKbps", speed)
 	
 	def cb_menu_sendlimit(self, menuitem, speed=0):
 		if menuitem.get_active() and self.send_limit != speed:
-			self.change_setting_n_restart("options/maxSendKbps", speed)
+			self.change_setting_async("options/maxSendKbps", speed)
 	
 	def cb_menu_recvlimit_other(self, menuitem):
 		return self.cb_menu_limit_other(menuitem, self.recv_limit)
@@ -1856,12 +1874,19 @@ class App(Gtk.Application, TimerManager):
 			e = DeviceEditorDialog(self, True, additional_data["nid"])
 			e.load()
 			e.show(self["window"])
+		elif response_id == RESPONSE_FIX_IGNORE:
+			# Ignore unknown device
+			def add_ignored(target, trash):
+				if not "ignoredDevices" in target:
+					target["ignoredDevices"] = []
+				target["ignoredDevices"].append(additional_data["nid"])
+			self.change_setting_async("ignoredDevices", add_ignored, restart=False)
 		elif response_id == RESPONSE_UR_ALLOW:
 			# Allow Usage reporting
-			self.change_setting_n_restart("options/urAccepted", 1)
+			self.change_setting_async("options/urAccepted", 1)
 		elif response_id == RESPONSE_UR_FORBID:
 			# Allow Usage reporting
-			self.change_setting_n_restart("options/urAccepted", -1)
+			self.change_setting_async("options/urAccepted", -1)
 		self.cb_infobar_close(bar)
 	
 	def cb_open_closed(self, box):
