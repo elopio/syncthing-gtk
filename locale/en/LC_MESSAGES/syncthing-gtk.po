@@ -552,7 +552,7 @@ msgstr ""
 
 #: syncthing_gtk/notifications.py:120
 #, python-format
-msgid "Unexpected folder ID sent from device \"%s\"."
+msgid "Unexpected folder \"%(folder)s\" sent from device \"%(device)s\"."
 msgstr ""
 
 #: syncthing_gtk/notifications.py:124
