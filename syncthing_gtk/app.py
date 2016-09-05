@@ -628,11 +628,11 @@ class App(Gtk.Application, TimerManager):
 				_("Connection to Syncthing daemon lost."),
 				_("Syncthing is probably restarting or has been shut down."))
 		if reason == Daemon.SHUTDOWN:
-			message = _("Syncthing has been shut down.")
+			message = _("Syncthing daemon has been shut down.")
 			self["menu-si-shutdown"].set_visible(False)
 			self["menu-si-resume"].set_visible(True)			
 		elif reason == Daemon.RESTART:
-			message = "%s %s..." % (_("Syncthing is restarting."), _("Please wait"))
+			message = "%s %s..." % (_("Syncthing daemon is restarting."), _("Please wait"))
 		self.display_connect_dialog(message, quit_button = reason != Daemon.RESTART)
 		if reason == Daemon.SHUTDOWN:
 			# Add 'Start daemon again' button to dialog
@@ -675,7 +675,7 @@ class App(Gtk.Application, TimerManager):
 			self.config["last_updatecheck"] = LONG_AGO
 			self.restart_after_update = True
 			self.close_connect_dialog()
-			self.display_connect_dialog(_("Your syncthing daemon is too old.") + "\n" + _("Attempting to download recent, please wait..."))
+			self.display_connect_dialog(_("Your Syncthing daemon is too old.") + "\n" + _("Attempting to download recent, please wait..."))
 			self.set_status(False)
 			self.check_for_upgrade()
 		else:
@@ -683,7 +683,7 @@ class App(Gtk.Application, TimerManager):
 			if reason == Daemon.NOT_AUTHORIZED:
 				message = _("Cannot authorize with daemon. Please, use WebUI to generate API key or disable password authentication.")
 			elif reason == Daemon.OLD_VERSION:
-				message = _("Your syncthing daemon is too old.\nPlease, upgrade syncthing package at least to version %s and try again.") % (self.daemon.get_min_version(),)
+				message = _("Your Syncthing daemon is too old.\nPlease, upgrade Syncthing package at least to version %s and try again.") % (self.daemon.get_min_version(),)
 			elif reason == Daemon.TLS_UNSUPPORTED:
 				message = _("Sorry, connecting to HTTPS is not supported on this platform.\nPlease, use WebUI to disable HTTPS try again.")
 			else: # Daemon.UNKNOWN
@@ -733,7 +733,7 @@ class App(Gtk.Application, TimerManager):
 	def cb_syncthing_config_oos(self, *a):
 		if self["infobar"] == None:
 			r = RIBar(
-				_("The configuration has been saved but not activated.\nSyncthing must restart to activate the new configuration."),
+				_("The configuration has been saved but not activated.\nSyncthing daemon must restart to activate the new configuration."),
 				Gtk.MessageType.WARNING,
 				( RIBar.build_button(_("_Restart"), "view-refresh"), RESPONSE_RESTART)
 				)
@@ -1547,7 +1547,7 @@ class App(Gtk.Application, TimerManager):
 			"""
 			log.verbose("Configuration value '%s' set to '%s'", setting_name, value)
 			if restart:
-				message = "%s %s..." % (_("Syncthing is restarting."), _("Please wait"))
+				message = "%s %s..." % (_("Syncthing daemon is restarting."), _("Please wait"))
 				self.display_connect_dialog(message)
 				self.set_status(False)
 				self.restart()

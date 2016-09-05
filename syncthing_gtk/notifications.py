@@ -128,7 +128,7 @@ if HAS_DESKTOP_NOTIFY:
 				self.info(markup)
 		
 		def cb_syncthing_device_rejected(self, daemon, nid, name, address):
-			markup = _('Device "%s" is trying to connect to syncthing daemon.' % (name,))
+			markup = _('Device "%s" is trying to connect to Syncthing daemon.' % (name,))
 			self.info(markup)
 			
 		def cb_syncthing_item_started(self, daemon, folder_id, path, time):
