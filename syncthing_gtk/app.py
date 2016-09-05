@@ -1818,7 +1818,7 @@ class App(Gtk.Application, TimerManager):
 		"""
 		Asks user if he really wants to do what he just asked to do
 		"""
-		msg = _("Do you really want to permanently stop synchronizing directory '%s'?")
+		msg = _("Do you really want to permanently stop synchronizing folder '%s'?")
 		if mode == "device":
 			msg = _("Do you really want remove device '%s' from Syncthing?")
 		d = Gtk.MessageDialog(
