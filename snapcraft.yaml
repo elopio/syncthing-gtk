@@ -1,0 +1,20 @@
+name: syncthing-gtk
+version: master
+summary: GTK3 & python based GUI for Syncthing
+description: |
+  GTK3 & Python based GUI and notification area icon for syncthing.
+
+grade: devel
+confinement: strict
+
+apps:
+  syncthing-gtk:
+    command: desktop-launch syncthing-gtk
+    plugs: [network, unity7]
+
+parts:
+  syncthing-gtk:
+    source: .
+    plugin: python
+    python-version: python2
+    after: [desktop-gtk3]
